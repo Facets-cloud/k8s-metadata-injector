@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	admissionv1beta1 "k8s.io/api/admission/v1beta1"
-	"k8s.io/api/admissionregistration/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/api/admissionregistration/v1"
 	"k8s.io/client-go/kubernetes"
-	//admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	//admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,7 +46,7 @@ type Webhook struct {
 	clientset      kubernetes.Interface
 	server         *http.Server
 	cert           *certBundle
-	serviceRef     *v1beta1.ServiceReference
+	serviceRef     *v1.ServiceReference
 	metadataConfig *MetadataConfig
 }
 
@@ -72,7 +72,7 @@ func NewWebhook(
 		caCertFile:     filepath.Join(certDir, caCertFile),
 	}
 	path := "/serve"
-	serviceRef := &v1beta1.ServiceReference{
+	serviceRef := &v1.ServiceReference{
 		Namespace: webhookServiceNamespace,
 		Name:      webhookServiceName,
 		Path:      &path,
@@ -152,11 +152,11 @@ func (wh *Webhook) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var admissionResponse *admissionv1beta1.AdmissionResponse
-	ar := admissionv1beta1.AdmissionReview{}
+	var admissionResponse *admissionv1.AdmissionResponse
+	ar := admissionv1.AdmissionReview{}
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
 		glog.Errorf("Can't decode body: %v", err)
-		admissionResponse = &admissionv1beta1.AdmissionResponse{
+		admissionResponse = &admissionv1.AdmissionResponse{
 			Result: &metav1.Status{
 				Message: err.Error(),
 			},
@@ -165,7 +165,7 @@ func (wh *Webhook) serve(w http.ResponseWriter, r *http.Request) {
 		admissionResponse = wh.mutate(&ar)
 	}
 
-	admissionReview := admissionv1beta1.AdmissionReview{}
+	admissionReview := admissionv1.AdmissionReview{}
 	if admissionResponse != nil {
 		admissionReview.Response = admissionResponse
 		if ar.Request != nil {
@@ -186,7 +186,7 @@ func (wh *Webhook) serve(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta1.AdmissionResponse {
+func (wh *Webhook) mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 	req := ar.Request
 
@@ -198,7 +198,7 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 		var pod corev1.Pod
 		if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 			glog.Errorf("Could not unmarshal raw object: %v", err)
-			return &admissionv1beta1.AdmissionResponse{
+			return &admissionv1.AdmissionResponse{
 				Result: &metav1.Status{
 					Message: err.Error(),
 				},
@@ -228,7 +228,7 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 		var service corev1.Service
 		if err := json.Unmarshal(req.Object.Raw, &service); err != nil {
 			glog.Errorf("Could not unmarshal raw object: %v", err)
-			return &admissionv1beta1.AdmissionResponse{
+			return &admissionv1.AdmissionResponse{
 				Result: &metav1.Status{
 					Message: err.Error(),
 				},
@@ -256,7 +256,7 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 		var pvc corev1.PersistentVolumeClaim
 		if err := json.Unmarshal(req.Object.Raw, &pvc); err != nil {
 			glog.Errorf("Could not unmarshal raw object: %v", err)
-			return &admissionv1beta1.AdmissionResponse{
+			return &admissionv1.AdmissionResponse{
 				Result: &metav1.Status{
 					Message: err.Error(),
 				},
@@ -280,7 +280,7 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 		}
 
 	} else {
-		return &admissionv1beta1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: true,
 		}
 	}
@@ -291,7 +291,7 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 	// determine whether to perform mutation
 	if !mutationRequired(wh.metadataConfig.IgnoredNamespaces, objectConfig, metadata) {
 		glog.Infof("Skipping mutation for %s/%s due to policy check", metadata.Namespace, metadata.Name)
-		return &admissionv1beta1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: true,
 		}
 	}
@@ -299,7 +299,7 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 	annotations := map[string]string{admissionWebhookAnnotationStatusKey: "injected"}
 	patchBytes, err := createPatch(metadata, objectConfig, annotations)
 	if err != nil {
-		return &admissionv1beta1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Result: &metav1.Status{
 				Message: err.Error(),
 			},
@@ -307,11 +307,11 @@ func (wh *Webhook) mutate(ar *admissionv1beta1.AdmissionReview) *admissionv1beta
 	}
 
 	glog.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
-	return &admissionv1beta1.AdmissionResponse{
+	return &admissionv1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,
-		PatchType: func() *admissionv1beta1.PatchType {
-			pt := admissionv1beta1.PatchTypeJSONPatch
+		PatchType: func() *admissionv1.PatchType {
+			pt := admissionv1.PatchTypeJSONPatch
 			return &pt
 		}(),
 	}
