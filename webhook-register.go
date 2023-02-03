@@ -5,7 +5,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/admissionregistration/v1beta1"
+	"k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -15,44 +15,44 @@ const (
 )
 
 func (wh *Webhook) selfRegistration(webhookConfigName string) error {
-	client := wh.clientset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations()
+	client := wh.clientset.Admissionregistrationv1().MutatingWebhookConfigurations()
 	existing, getErr := client.Get(webhookConfigName, metav1.GetOptions{})
 	if getErr != nil && !errors.IsNotFound(getErr) {
 		return getErr
 	}
 
-	ignorePolicy := v1beta1.Ignore
+	ignorePolicy := v1.Ignore
 	caCert, err := readCertFile(wh.cert.caCertFile)
 	if err != nil {
 		return err
 	}
-	webhook := v1beta1.Webhook{
+	webhook := v1.Webhook{
 		Name: webhookName,
-		Rules: []v1beta1.RuleWithOperations{
+		Rules: []v1.RuleWithOperations{
 			{
-				Operations: []v1beta1.OperationType{v1beta1.Create},
-				Rule: v1beta1.Rule{
+				Operations: []v1.OperationType{v1.Create},
+				Rule: v1.Rule{
 					APIGroups:   []string{""},
 					APIVersions: []string{"v1"},
 					Resources:   []string{"pods", "services", "persistentvolumeclaims"},
 				},
 			},
 			{
-				Operations: []v1beta1.OperationType{v1beta1.Update},
-				Rule: v1beta1.Rule{
+				Operations: []v1.OperationType{v1.Update},
+				Rule: v1.Rule{
 					APIGroups:   []string{""},
 					APIVersions: []string{"v1"},
 					Resources:   []string{"services", "persistentvolumeclaims"},
 				},
 			},
 		},
-		ClientConfig: v1beta1.WebhookClientConfig{
+		ClientConfig: v1.WebhookClientConfig{
 			Service:  wh.serviceRef,
 			CABundle: caCert,
 		},
 		FailurePolicy: &ignorePolicy,
 	}
-	webhooks := []v1beta1.Webhook{webhook}
+	webhooks := []v1.Webhook{webhook}
 
 	if getErr == nil && existing != nil {
 		// Update case.
@@ -66,7 +66,7 @@ func (wh *Webhook) selfRegistration(webhookConfigName string) error {
 	} else {
 		// Create case.
 		glog.Info("Creating a MutatingWebhookConfiguration for the k8s-metadata-injector admission webhook")
-		webhookConfig := &v1beta1.MutatingWebhookConfiguration{
+		webhookConfig := &v1.MutatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: webhookConfigName,
 			},
@@ -81,6 +81,6 @@ func (wh *Webhook) selfRegistration(webhookConfigName string) error {
 }
 
 func (wh *Webhook) selfDeregistration(webhookConfigName string) error {
-	client := wh.clientset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations()
+	client := wh.clientset.Admissionregistrationv1().MutatingWebhookConfigurations()
 	return client.Delete(webhookConfigName, metav1.NewDeleteOptions(0))
 }
