@@ -3,8 +3,8 @@ package main
 import (
 	"reflect"
 
+	"context"
 	"github.com/golang/glog"
-
 	"k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,8 +15,8 @@ const (
 )
 
 func (wh *Webhook) selfRegistration(webhookConfigName string) error {
-	client := wh.clientset.Admissionregistrationv1().MutatingWebhookConfigurations()
-	existing, getErr := client.Get(webhookConfigName, metav1.GetOptions{})
+	client := wh.clientset.AdmissionregistrationV1().MutatingWebhookConfigurations()
+	existing, getErr := client.Get(context.TODO(), webhookConfigName, metav1.GetOptions{})
 	if getErr != nil && !errors.IsNotFound(getErr) {
 		return getErr
 	}
@@ -26,7 +26,7 @@ func (wh *Webhook) selfRegistration(webhookConfigName string) error {
 	if err != nil {
 		return err
 	}
-	webhook := v1.Webhook{
+	webhook := v1.MutatingWebhook{
 		Name: webhookName,
 		Rules: []v1.RuleWithOperations{
 			{
@@ -52,14 +52,14 @@ func (wh *Webhook) selfRegistration(webhookConfigName string) error {
 		},
 		FailurePolicy: &ignorePolicy,
 	}
-	webhooks := []v1.Webhook{webhook}
+	webhooks := []v1.MutatingWebhook{webhook}
 
 	if getErr == nil && existing != nil {
 		// Update case.
 		glog.Info("Updating existing MutatingWebhookConfiguration for the k8s-metadata-injector admission webhook")
 		if !reflect.DeepEqual(webhooks, existing.Webhooks) {
 			existing.Webhooks = webhooks
-			if _, err := client.Update(existing); err != nil {
+			if _, err := client.Update(context.TODO(), existing, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
@@ -72,7 +72,7 @@ func (wh *Webhook) selfRegistration(webhookConfigName string) error {
 			},
 			Webhooks: webhooks,
 		}
-		if _, err := client.Create(webhookConfig); err != nil {
+		if _, err := client.Create(context.TODO(), webhookConfig, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -81,6 +81,6 @@ func (wh *Webhook) selfRegistration(webhookConfigName string) error {
 }
 
 func (wh *Webhook) selfDeregistration(webhookConfigName string) error {
-	client := wh.clientset.Admissionregistrationv1().MutatingWebhookConfigurations()
-	return client.Delete(webhookConfigName, metav1.NewDeleteOptions(0))
+	client := wh.clientset.AdmissionregistrationV1().MutatingWebhookConfigurations()
+	return client.Delete(context.TODO(), webhookConfigName, *metav1.NewDeleteOptions(0))
 }
